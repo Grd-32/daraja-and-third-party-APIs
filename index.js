@@ -30,7 +30,7 @@ app.use('/api/payment', paymentRoutes);
 // Database Connection
 const startServer = async () => {
     try {
-      await mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true });
+      await mongoose.connect('mongodb+srv://danfdev6:Danf102020!@cluster0.yeci2.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0', { useNewUrlParser: true, useUnifiedTopology: true });
       console.log('Connected to MongoDB');
   
       // Load initial data

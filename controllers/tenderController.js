@@ -13,7 +13,7 @@ export const loadInitialData = async () => {
 
     for (const tender of tenders) {
       await Tender.updateOne(
-        { tender_ref: tender.tender_ref },
+        { BDR_No: tender.BDR_No }, // Use BDR_No as a unique identifier
         { $set: tender },
         { upsert: true }
       );
@@ -27,12 +27,16 @@ export const loadInitialData = async () => {
 // Get all tenders with optional filters
 export const getTenders = async (req, res) => {
   try {
-    const { title, category, method } = req.query;
+    const { title, category, method, country, startDate, endDate } = req.query;
 
     const filter = {};
-    if (title) filter.title = new RegExp(title, 'i'); // Case-insensitive search
-    if (category) filter['Procurement Category'] = category;
-    if (method) filter['Procurement Method'] = method;
+    if (title) filter.Tender_Brief = new RegExp(title, 'i'); // Case-insensitive search
+    if (category) filter.Tender_Category = category;
+    if (method) filter.CompetitionType = method;
+    if (country) filter.Country = country;
+    if (startDate && endDate) {
+      filter.Tender_Expiry = { $gte: new Date(startDate), $lte: new Date(endDate) };
+    }
 
     const tenders = await Tender.find(filter);
     res.status(200).json(tenders);
@@ -40,6 +44,7 @@ export const getTenders = async (req, res) => {
     res.status(500).json({ message: 'Error fetching tenders.', error });
   }
 };
+
 
 // Create a new tender
 export const createTender = async (req, res) => {

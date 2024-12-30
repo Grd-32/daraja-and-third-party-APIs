@@ -1,15 +1,26 @@
 import mongoose from 'mongoose';
 
-const tenderSchema = new mongoose.Schema({
-  tender_ref: { type: String, required: true, unique: true },
-  title: { type: String, required: true },
-  Pe: { type: String, required: true }, // Procurement Entity
-  'Procurement Method': { type: String, required: true },
-  'Procurement Category': { type: String, required: true },
-  close_at: { type: Date, required: true },
-  published_at: { type: Date, required: true },
-  addendum_added: { type: String, default: '' },
-});
+const TenderSchema = new mongoose.Schema(
+  {
+    BDR_No: { type: Number, required: true },
+    Tender_No: { type: String, default: '' },
+    Tender_Brief: { type: String, required: true },
+    Purchasing_Authority: { type: String, required: true },
+    Work_Detail: { type: String, required: true },
+    CompetitionType: { type: String, required: true },
+    Tender_Value: { type: String, required: true },
+    Tender_Category: { type: String, required: true },
+    Funding: { type: String, required: true },
+    Geographical_Addresses: { type: String, required: true },
+    Country: { type: String, required: true },
+    Tender_Expiry: { type: Date, required: true },
+    Email_Address: { type: String, default: '' },
+    Mobile_Contacts: { type: String, default: '' },
+    FileUrl: { type: String, required: true },
+    EntryDate: { type: Date, required: true },
+    TUID: { type: String, required: true },
+  },
+  { timestamps: true }
+);
 
-const Tender = mongoose.model('Tender', tenderSchema);
-export default Tender;
+export default mongoose.model('Tender', TenderSchema);

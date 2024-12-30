@@ -1,85 +1,52 @@
+import Payment from '../models/Payment.js';
 import axios from 'axios';
-import { v4 as uuidv4 } from 'uuid';
-import getMpesaToken from '../utils/mpesaToken.js';
-import Transaction from '../models/Transactions.js';
 
-export const initiateMpesaPayment = async (req, res) => {
-  const { user_id, tender_ref } = req.body;
+const FLUTTERWAVE_SECRET_KEY = process.env.FLUTTERWAVE_SECRET_KEY;
+
+// Initiate Flutterwave payment
+export const initiatePayment = async (req, res) => {
+  const { email, phone, tender_ref, amount } = req.body;
 
   try {
-    const token = await getMpesaToken();
-    const timestamp = new Date()
-      .toISOString()
-      .replace(/[-T:]/g, '')
-      .split('.')[0]; // Format: YYYYMMDDHHMMSS
-    const password = Buffer.from(`${process.env.MPESA_SHORTCODE}${process.env.MPESA_PASSKEY}${timestamp}`).toString('base64');
+    // Save payment details to the database
+    const payment = new Payment({ email, phone, tender_ref, amount, paymentLink: '' });
+    await payment.save();
 
-    const amount = 200; // Fixed application fee
-    const phoneNumber = '254700123456'; // Replace with dynamic user phone number
-
-    const transactionData = {
-      BusinessShortCode: process.env.MPESA_SHORTCODE,
-      Password: password,
-      Timestamp: timestamp,
-      TransactionType: 'CustomerPayBillOnline',
-      Amount: amount,
-      PartyA: phoneNumber,
-      PartyB: process.env.MPESA_SHORTCODE,
-      PhoneNumber: phoneNumber,
-      CallBackURL: process.env.MPESA_CALLBACK_URL,
-      AccountReference: tender_ref,
-      TransactionDesc: 'Tender Application Fee',
-    };
-
-    // Send STK Push request
-    const response = await axios.post(
-      'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest',
-      transactionData,
+    // Create Flutterwave payment link
+    const flutterwaveResponse = await axios.post(
+      'https://api.flutterwave.com/v3/payments',
+      {
+        tx_ref: `${payment._id}`, // Transaction reference
+        amount,
+        currency: 'KES',
+        redirect_url: `${process.env.CLIENT_URL}/payment-status`, // Redirect after payment
+        customer: {
+          email,
+          phonenumber: phone,
+          name: email,
+        },
+        customizations: {
+          title: 'Tender Payment',
+          description: `Payment for tender: ${tender_ref}`,
+        },
+      },
       {
         headers: {
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${FLUTTERWAVE_SECRET_KEY}`,
+          'Content-Type': 'application/json',
         },
       }
     );
 
-    // Save the transaction in the database
-    const transaction = new Transaction({
-      user_id,
-      tender_ref,
-      amount,
-      status: 'pending',
-    });
-    await transaction.save();
+    // Update payment link in the database
+    payment.paymentLink = flutterwaveResponse.data.data.link;
+    await payment.save();
 
     res.status(200).json({
-      message: 'STK Push initiated. Await user confirmation.',
-      transaction,
-      mpesaResponse: response.data,
+      message: 'Payment initiated successfully.',
+      paymentLink: payment.paymentLink,
     });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to initiate MPESA payment.', error: error.response?.data || error.message });
-  }
-};
-
-export const handleMpesaCallback = async (req, res) => {
-  try {
-    const { Body } = req.body;
-    const { ResultCode, ResultDesc } = Body.stkCallback;
-
-    if (ResultCode === 0) {
-      // Update transaction status to successful
-      const { MerchantRequestID } = Body.stkCallback;
-      await Transaction.findOneAndUpdate(
-        { tx_ref: MerchantRequestID },
-        { status: 'successful' },
-        { new: true }
-      );
-
-      res.status(200).json({ message: 'Payment successful.' });
-    } else {
-      res.status(400).json({ message: `Payment failed: ${ResultDesc}` });
-    }
-  } catch (error) {
-    res.status(500).json({ message: 'Failed to process callback.', error });
+    res.status(500).json({ message: 'Failed to initiate payment.', error: error.message });
   }
 };
