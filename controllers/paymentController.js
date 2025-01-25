@@ -1,5 +1,9 @@
 import Payment from '../models/Payment.js';
 import axios from 'axios';
+import dotenv from 'dotenv';
+
+
+dotenv.config();
 
 const FLUTTERWAVE_SECRET_KEY = process.env.FLUTTERWAVE_SECRET_KEY;
 

@@ -23,4 +23,6 @@ const TenderSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+TenderSchema.index({ Tender_Expiry: 1 }, { expireAfterSeconds: 0 });
+
 export default mongoose.model('Tender', TenderSchema);
