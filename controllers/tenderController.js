@@ -1,35 +1,54 @@
 import Tender from '../models/Tender.js';
-import fs from 'fs/promises';
-import path from 'path';
+import axios from 'axios';
+import cron from 'node-cron';
 
-// Path to JSON file
-const tendersFilePath = path.resolve('./tenders.json');
-
-// Load tenders from JSON and populate the database
-export const loadInitialData = async () => {
+// Fetch tenders from an API and load them into the database
+export const fetchAndLoadTenders = async () => {
   try {
-    const rawData = await fs.readFile(tendersFilePath, 'utf-8');
-    const tenders = JSON.parse(rawData);
+    const apiUrl = 'https://www.biddetail.com/kenya/C62A8CB5DD405E768CAD792637AC0446/F4454993C1DE1AB1948A9D33364FA9CC';
+    const { data } = await axios.get(apiUrl);
 
-    for (const tender of tenders) {
-      await Tender.updateOne(
-        { BDR_No: tender.BDR_No }, // Use BDR_No as a unique identifier
-        { $set: tender },
-        { upsert: true }
-      );
+    if (data.Status !== 0) {
+      console.error('Error fetching tenders from API: Invalid status code');
+      return;
     }
-    console.log('Initial tenders data loaded.');
+
+    const tenderDetails = data.TenderDetails;
+
+    for (const tenderDetail of tenderDetails) {
+      const tenders = tenderDetail.TenderLists || [];
+      for (const tender of tenders) {
+        await Tender.updateOne(
+          { BDR_No: tender.BDR_No }, // Use BDR_No as a unique identifier
+          { $set: tender },
+          { upsert: true }
+        );
+      }
+    }
+
+    console.log('Tenders loaded successfully from the API.');
   } catch (error) {
-    console.error('Failed to load initial tenders:', error);
+    console.error('Error fetching tenders from API:', error.message);
   }
 };
 
-// Get all tenders with optional filters
+// Delete expired tenders
+export const deleteExpiredTenders = async () => {
+  try {
+    const currentDate = new Date();
+    const result = await Tender.deleteMany({ Tender_Expiry: { $lt: currentDate } });
+    console.log(`Deleted ${result.deletedCount} expired tenders.`);
+  } catch (error) {
+    console.error('Error deleting expired tenders:', error.message);
+  }
+};
+
+// Get all viable tenders with optional filters
 export const getTenders = async (req, res) => {
   try {
     const { title, category, method, country, startDate, endDate } = req.query;
 
-    const filter = {};
+    const filter = { Tender_Expiry: { $gte: new Date() } }; // Only viable tenders
     if (title) filter.Tender_Brief = new RegExp(title, 'i'); // Case-insensitive search
     if (category) filter.Tender_Category = category;
     if (method) filter.CompetitionType = method;
@@ -45,6 +64,12 @@ export const getTenders = async (req, res) => {
   }
 };
 
+// Schedule daily tender import and cleanup
+cron.schedule('0 0 * * *', async () => {
+  console.log('Running daily tender import and cleanup.');
+  await fetchAndLoadTenders();
+  await deleteExpiredTenders();
+});
 
 // Create a new tender
 export const createTender = async (req, res) => {

@@ -4,8 +4,12 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import errorMiddleware from './middleware/errorMiddleware.js';
 import './utils/scheduler.js';
-import { loadInitialData } from './controllers/tenderController.js';
 import paymentRoutes from './routes/paymentRoutes.js';
+
+import cron from 'node-cron';
+import { fetchAndLoadTenders } from './controllers/tenderController.js';
+
+
 
 dotenv.config(); // Load environment variables
 
@@ -30,6 +34,12 @@ app.use('/api/tenders', tenderRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/payment', paymentRoutes);
 
+// Schedule the tender import to run every 24 hours (midnight)
+cron.schedule('0 0 * * *', async () => {
+  console.log('Starting scheduled tender import...');
+  await fetchAndLoadTenders();
+});
+
 // Database Connection and Server Start
 const startServer = async () => {
   try {
@@ -37,7 +47,7 @@ const startServer = async () => {
     console.log('Connected to MongoDB');
 
     // Load initial data
-    await loadInitialData();
+    await fetchAndLoadTenders();
 
     // Start server
     const PORT = process.env.PORT || 5000;
