@@ -1,68 +1,35 @@
 import Tender from '../models/Tender.js';
-import axios from 'axios';
-import cron from 'node-cron';
-import Redis from 'ioredis';
+import fs from 'fs/promises';
+import path from 'path';
 
-// Initialize Redis
-const redis = new Redis();
+// Path to JSON file
+const tendersFilePath = path.resolve('./tenders.json');
 
-// Fetch tenders from an API and load them into the database
-export const fetchAndLoadTenders = async () => {
+// Load tenders from JSON and populate the database
+export const loadInitialData = async () => {
   try {
-    const apiUrl = 'https://www.biddetail.com/kenya/C62A8CB5DD405E768CAD792637AC0446/F4454993C1DE1AB1948A9D33364FA9CC';
-    const { data } = await axios.get(apiUrl);
+    const rawData = await fs.readFile(tendersFilePath, 'utf-8');
+    const tenders = JSON.parse(rawData);
 
-    if (data.Status !== 0) {
-      console.error('Error fetching tenders from API: Invalid status code');
-      return;
+    for (const tender of tenders) {
+      await Tender.updateOne(
+        { BDR_No: tender.BDR_No }, // Use BDR_No as a unique identifier
+        { $set: tender },
+        { upsert: true }
+      );
     }
-
-    const tenderDetails = data.TenderDetails;
-    const bulkOps = [];
-
-    for (const tenderDetail of tenderDetails) {
-      const tenders = tenderDetail.TenderLists || [];
-      for (const tender of tenders) {
-        bulkOps.push({
-          updateOne: {
-            filter: { BDR_No: tender.BDR_No }, // Unique identifier
-            update: { $set: tender },
-            upsert: true,
-          },
-        });
-      }
-    }
-
-    if (bulkOps.length > 0) {
-      const result = await Tender.bulkWrite(bulkOps);
-      console.log(`Tenders loaded successfully: ${result.upsertedCount} new, ${result.modifiedCount} updated.`);
-    } else {
-      console.log('No tenders to update.');
-    }
+    console.log('Initial tenders data loaded.');
   } catch (error) {
-    console.error('Error fetching tenders from API:', error.message);
+    console.error('Failed to load initial tenders:', error);
   }
 };
 
-// Delete expired tenders automatically
-export const deleteExpiredTenders = async () => {
-  try {
-    const currentDate = new Date();
-    const result = await Tender.deleteMany({ Tender_Expiry: { $lt: currentDate } });
-    console.log(`Deleted ${result.deletedCount} expired tenders.`);
-  } catch (error) {
-    console.error('Error deleting expired tenders:', error.message);
-  }
-};
-
-// Get all viable tenders with pagination and optional filters
+// Get all tenders with optional filters
 export const getTenders = async (req, res) => {
   try {
-    const { page = 1, limit = 20, title, category, method, country, startDate, endDate } = req.query;
+    const { title, category, method, country, startDate, endDate } = req.query;
 
-    const skip = (page - 1) * limit;
-    const filter = { Tender_Expiry: { $gte: new Date() } }; // Only viable tenders
-
+    const filter = {};
     if (title) filter.Tender_Brief = new RegExp(title, 'i'); // Case-insensitive search
     if (category) filter.Tender_Category = category;
     if (method) filter.CompetitionType = method;
@@ -71,39 +38,13 @@ export const getTenders = async (req, res) => {
       filter.Tender_Expiry = { $gte: new Date(startDate), $lte: new Date(endDate) };
     }
 
-    const cacheKey = JSON.stringify({ filter, page, limit }); // Cache key based on query
-    const cachedData = await redis.get(cacheKey);
-
-    if (cachedData) {
-      console.log('Serving tenders from cache.');
-      return res.status(200).json(JSON.parse(cachedData));
-    }
-
-    const tenders = await Tender.find(filter).sort({ Tender_Expiry: 1 }).skip(skip).limit(Number(limit));
-    const total = await Tender.countDocuments(filter);
-
-    const result = {
-      tenders,
-      total,
-      page,
-      totalPages: Math.ceil(total / limit),
-    };
-
-    // Cache the result for 10 minutes
-    redis.set(cacheKey, JSON.stringify(result), 'EX', 600);
-
-    res.status(200).json(result);
+    const tenders = await Tender.find(filter);
+    res.status(200).json(tenders);
   } catch (error) {
     res.status(500).json({ message: 'Error fetching tenders.', error });
   }
 };
 
-// Schedule daily tender import and cleanup
-cron.schedule('0 0 * * *', async () => {
-  console.log('Running daily tender import and cleanup...');
-  await fetchAndLoadTenders();
-  await deleteExpiredTenders();
-});
 
 // Create a new tender
 export const createTender = async (req, res) => {
@@ -129,7 +70,7 @@ export const updateTender = async (req, res) => {
   }
 };
 
-// Delete a tender by ID
+// Delete a tender
 export const deleteTender = async (req, res) => {
   try {
     const { id } = req.params;

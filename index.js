@@ -8,8 +8,10 @@ import paymentRoutes from './routes/paymentRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 
 import cron from 'node-cron';
-import { fetchAndLoadTenders } from './controllers/tenderController.js';
+import { loadInitialData } from './controllers/tenderController.js';
 import paypal from "@paypal/checkout-server-sdk";
+import paypalRoutes from './routes/paypalRoutes.js';
+import Tender from './models/Tender.js';
 
 
 
@@ -26,6 +28,82 @@ app.use(cors({
 app.use(express.json());
 app.use(errorMiddleware);
 
+;
+
+// OR if you want to allow only frontend:
+app.use(cors({ origin: "http://localhost:3000" }));
+
+// ✅ Store payment when user pays
+app.post("/payment/success", async (req, res) => {
+  const { userEmail, tenderRef } = req.body;
+
+  if (!tenderRef || !userEmail) {
+      return res.status(400).json({ message: "Missing payment details" });
+  }
+
+  const tender = await Tender.findOne({ BDR_No: tenderRef });
+
+  if (!tender) {
+      return res.status(404).json({ message: "Tender not found" });
+  }
+
+  if (!tender.paidUsers.includes(userEmail)) {
+      tender.paidUsers.push(userEmail);
+      await tender.save();
+  }
+
+  // ✅ Send Confirmation Email
+  try {
+      await axios.post(
+          "https://hazi.co.ke/api/v3/email/send",
+          {
+              recipient: userEmail,
+              name: userEmail.split("@")[0], // Extract name from email
+              subject: "Tender Purchase Confirmation",
+              message: `
+                  <h2>Congratulations! 🎉</h2>
+                  <p>You have successfully purchased the tender:</p>
+                  <strong>${tender.Tender_Brief}</strong>
+                  <p>Country: ${tender.Country}</p>
+                  <p>Expiry Date: ${new Date(tender.Tender_Expiry).toDateString()}</p>
+                  <p><a href="${tender.FileUrl}" target="_blank">Download Tender Document</a></p>
+                  <p>Thank you for using our platform!</p>
+              `,
+          },
+          {
+              headers: { Authorization: `Bearer ${process.env.YOUR_HAZI_API_TOKEN}` }, // Replace with your API token
+          }
+      );
+
+      console.log("Email sent successfully to", userEmail);
+  } catch (error) {
+      console.error("Email sending failed:", error.response?.data || error.message);
+  }
+
+  res.json({ message: "Payment recorded & email sent", tenderRef });
+});
+
+
+    // ✅ API to fetch a tender by BDR_No
+// ✅ Protect API: Only show tenders to paid users
+app.get("/tenders/:tenderRef", async (req, res) => {
+  const { userEmail } = req.query; // User email from frontend
+  const tenderRef = req.params.tenderRef;
+
+  const tender = await Tender.findOne({ BDR_No: tenderRef });
+
+  if (!tender) {
+      return res.status(404).json({ message: "Tender not found" });
+  }
+
+  if (!tender.paidUsers.includes(userEmail)) {
+      return res.status(403).json({ message: "Access denied. Please pay first." });
+  }
+
+  res.json(tender);
+});
+  
+
 // API routes
 import authRoutes from './routes/authRoutes.js';
 import tenderRoutes from './routes/tenderRoutes.js';
@@ -34,61 +112,15 @@ import adminRoutes from './routes/adminRoutes.js';
 app.use('/api/auth', authRoutes);
 app.use('/api/tenders', tenderRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/payment', paymentRoutes);
+// app.use('/api/payment', paymentRoutes);
+app.use('/api/payments', paypalRoutes);
 app.use('/api/notifications', notificationRoutes);
 
-// PayPal environment setup
-const environment = new paypal.core.LiveEnvironment(
-  "AT7kmVX5LLhLqaeRMeRznjiSGJO0LZJucXCiN7nx1O31MLvb5-16GdIiy6BCFdMKEdnrc5wAxma2HkdA", // Replace with your Client ID
-  "EJ9PbiR1NV-QwnXpHC1xyZ8ApNa2CWHqwGvZB7pz7ErCKp5acDgj_WdKXb0oMeBhIcmSKIC4y_Ufj7h4" // Replace with your Client Secret
-);
-const client = new paypal.core.PayPalHttpClient(environment);
-
-// Create order route
-app.post("/create-order", async (req, res) => {
-  const request = new paypal.orders.OrdersCreateRequest();
-  request.prefer("return=representation");
-  request.requestBody({
-    intent: "CAPTURE",
-    purchase_units: [
-      {
-        amount: {
-          currency_code: "USD",
-          value: "20.00", // Replace with your amount
-        },
-      },
-    ],
-  });
-
-  try {
-    const order = await client.execute(request);
-    res.json({ id: order.result.id });
-  } catch (error) {
-    console.error(error);
-    res.status(500).send("Something went wrong");
-  }
-});
-
-// Capture payment route
-app.post("/capture-order", async (req, res) => {
-  const { orderId } = req.body;
-
-  const request = new paypal.orders.OrdersCaptureRequest(orderId);
-  request.requestBody({});
-
-  try {
-    const capture = await client.execute(request);
-    res.json(capture.result);
-  } catch (error) {
-    console.error(error);
-    res.status(500).send("Something went wrong");
-  }
-});
 
 // Schedule the tender import to run every 24 hours (midnight)
 cron.schedule('0 0 * * *', async () => {
   console.log('Starting scheduled tender import...');
-  await fetchAndLoadTenders();
+  await loadInitialData();
 });
 
 // Database Connection and Server Start
@@ -98,7 +130,7 @@ const startServer = async () => {
     console.log('Connected to MongoDB');
 
     // Load initial data
-    await fetchAndLoadTenders();
+    await loadInitialData();
 
     // Start server
     const PORT = process.env.PORT || 5000;

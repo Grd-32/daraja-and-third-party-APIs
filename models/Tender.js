@@ -19,6 +19,7 @@ const TenderSchema = new mongoose.Schema(
     FileUrl: { type: String, required: true },
     EntryDate: { type: Date, required: true },
     TUID: { type: String, required: true },
+    paidUsers: [String] // Array to store emails of paid users
   },
   { timestamps: true }
 );
