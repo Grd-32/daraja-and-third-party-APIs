@@ -28,10 +28,9 @@ app.use(cors({
 app.use(express.json());
 app.use(errorMiddleware);
 
-;
 
 // OR if you want to allow only frontend:
-app.use(cors({ origin: "http://localhost:3000" }));
+app.use(cors({ origin: "https://biddersportal.com" }));
 
 // ✅ Store payment when user pays
 app.post("/payment/success", async (req, res) => {
