@@ -40,7 +40,7 @@ export const savePreferences = async (req, res) => {
       tx_ref: `txn_${savedPreference._id}`,
       amount: charge,
       currency: 'KES',
-      redirect_url: 'http://localhost:3000/payment/callback', // Update with your actual frontend callback URL
+      redirect_url: 'https://biddersportal.com/payment/callback', // Update with your actual frontend callback URL
       customer: {
         email: notificationMethod === 'email' ? contactDetail : undefined,
         phone_number: notificationMethod === 'sms' ? contactDetail : undefined,
