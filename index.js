@@ -4,7 +4,6 @@ import dotenv from "dotenv";
 import cors from "cors";
 import errorMiddleware from "./middleware/errorMiddleware.js";
 import "./utils/scheduler.js";
-import notificationRoutes from "./routes/notificationRoutes.js";
 
 import cron from "node-cron";
 import { loadInitialData } from "./controllers/tenderController.js";
@@ -12,7 +11,7 @@ import paypalRoutes from "./routes/paypalRoutes.js";
 import Tender from "./models/Tender.js";
 import axios from "axios";
 import subscriptionRoutes from "./routes/subscriptionRoutes.js";
-import sendDailyNotifications from "./utils/notificationScheduler.js";
+import "./utils/cronJobs.js"; // Import the cron jobs
 
 dotenv.config(); // Load environment variables
 
@@ -21,6 +20,7 @@ const app = express();
 // Middleware
 app.use(express.json());
 app.use(cors({ origin: "https://biddersportal.com" })); // Allow frontend only
+// app.use(cors({ origin: "http://localhost:3000" })); 
 app.use(errorMiddleware);
 
 // ✅ Store payment when user pays
@@ -119,6 +119,7 @@ import authRoutes from "./routes/authRoutes.js";
 import tenderRoutes from "./routes/tenderRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import preQualificationRoutes from "./routes/preQualificationRoutes.js";
+import membershipRoutes from "./routes/membershipRoutes.js";
 
 app.use(cors({ origin: process.env.FRONTEND_URL }));
 
@@ -126,9 +127,10 @@ app.use("/api/auth", authRoutes);
 app.use("/api/tenders", tenderRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/payments", paypalRoutes);
-// app.use("/api/notifications", notificationRoutes);
-app.use("/api/notifications", subscriptionRoutes);
+app.use("/api/membership", membershipRoutes);
 app.use("/api/prequalification", preQualificationRoutes);
+app.use("/api/subscriptions", subscriptionRoutes);
+// app.use("/api/tenders/purchased", purchasedTendersRoutes);
 
 // ✅ Schedule the tender import to run every 24 hours (midnight)
 cron.schedule("0 0 * * *", async () => {

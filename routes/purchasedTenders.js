@@ -1,18 +1,8 @@
-import express from 'express';
-import {
-  getTenders,
-  createTender,
-  updateTender,
-  deleteTender,
-} from '../controllers/tenderController.js';
+import express from "express";
+import Tender from "../models/Tender.js";
 
 const router = express.Router();
 
-// Routes
-router.get('/', getTenders);
-router.post('/', createTender);
-router.put('/:id', updateTender);
-router.delete('/:id', deleteTender);
 // ✅ API to fetch all purchased tenders for a user
 router.get("/purchased", async (req, res) => {
   try {
@@ -32,6 +22,5 @@ router.get("/purchased", async (req, res) => {
     res.status(500).json({ message: "Internal Server Error" });
   }
 });
-
 
 export default router;
